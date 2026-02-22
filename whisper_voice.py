@@ -48,84 +48,81 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     sys.exit("OPENAI_API_KEY missing. Create a .env file with OPENAI_API_KEY=sk-...")
 
-client:     OpenAI = OpenAI(api_key=OPENAI_API_KEY)
-recording:  bool = False
-audio_data: list[npt.NDArray[np.int16]] = []
-stream:     Optional[sd.InputStream] = None
-lock:       threading.Lock = threading.Lock()
 
+class Recorder:
+    def __init__(self, client: OpenAI) -> None:
+        self.client    = client
+        self.recording: bool = False
+        self.audio_data: list[npt.NDArray[np.int16]] = []
+        self.stream:    Optional[sd.InputStream] = None
+        self.lock       = threading.Lock()
 
-def audio_callback(
-    indata: npt.NDArray[np.int16],
-    frames: int,
-    time_info: object,
-    status: sd.CallbackFlags,
-) -> None:
-    with lock:
-        if recording:
-            audio_data.append(indata.copy())
+    def audio_callback(
+        self,
+        indata: npt.NDArray[np.int16],
+        _frames: int,
+        _time_info: object,
+        _status: sd.CallbackFlags,
+    ) -> None:
+        with self.lock:
+            if self.recording:
+                self.audio_data.append(indata.copy())
 
+    def start_recording(self) -> None:
+        self.audio_data = []
+        self.recording  = True
+        self.stream     = sd.InputStream(samplerate=config.samplerate, channels=1,
+                                         dtype="int16", callback=self.audio_callback)
+        self.stream.start()
+        print("Recording... (press the shortcut again to stop)")
 
-def start_recording() -> None:
-    global recording, audio_data, stream
-    audio_data = []
-    recording  = True
-    stream     = sd.InputStream(samplerate=config.samplerate, channels=1,
-                                 dtype="int16", callback=audio_callback)
-    stream.start()
-    print("Recording... (press the shortcut again to stop)")
+    def stop_and_transcribe(self) -> None:
+        self.recording = False
+        time.sleep(0.1)
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
 
+        if not self.audio_data:
+            print("No audio captured.")
+            return
 
-def stop_and_transcribe() -> None:
-    global recording, stream
+        audio_np: npt.NDArray[np.int16] = np.concatenate(self.audio_data, axis=0)
 
-    recording = False
-    time.sleep(0.1)
-    if stream:
-        stream.stop()
-        stream.close()
-        stream = None
+        tmp_path: Optional[str] = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                tmp_path = f.name
+            wav.write(tmp_path, config.samplerate, audio_np)
 
-    if not audio_data:
-        print("No audio captured.")
-        return
+            print("Transcribing...")
+            with open(tmp_path, "rb") as audio_file:
+                result = self.client.audio.transcriptions.create(
+                    model=config.model,
+                    file=audio_file,
+                    language=config.language,
+                )
+            text: str = result.text.strip()
+            print(f"Transcribed: {text}")
 
-    audio_np: npt.NDArray[np.int16] = np.concatenate(audio_data, axis=0)
+            # Paste into the active window
+            pyperclip.copy(text)
+            pyautogui.hotkey("ctrl", "v")
 
-    tmp_path: Optional[str] = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-            tmp_path = f.name
-        wav.write(tmp_path, config.samplerate, audio_np)
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
-        print("Transcribing...")
-        with open(tmp_path, "rb") as audio_file:
-            result = client.audio.transcriptions.create(
-                model=config.model,
-                file=audio_file,
-                language=config.language,
-            )
-        text: str = result.text.strip()
-        print(f"Transcribed: {text}")
-
-        # Paste into the active window
-        pyperclip.copy(text)
-        pyautogui.hotkey("ctrl", "v")
-
-    except Exception as e:
-        print(f"Error: {e}")
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-
-
-def toggle(event: object = None) -> None:
-    with lock:
-        is_recording = recording
-    if not is_recording:
-        start_recording()
-    else:
-        threading.Thread(target=stop_and_transcribe, daemon=True).start()
+    def toggle(self, _event: object = None) -> None:
+        with self.lock:
+            is_recording = self.recording
+        if not is_recording:
+            self.start_recording()
+        else:
+            threading.Thread(target=self.stop_and_transcribe, daemon=True).start()
 
 
 def main() -> None:
@@ -134,7 +131,8 @@ def main() -> None:
     print(f"   Language : {config.language}")
     print("   Press Ctrl+C to quit\n")
 
-    keyboard.add_hotkey(config.hotkey, toggle)
+    recorder = Recorder(client=OpenAI(api_key=OPENAI_API_KEY))
+    keyboard.add_hotkey(config.hotkey, recorder.toggle)
     keyboard.wait("ctrl+c")
 
 
