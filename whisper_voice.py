@@ -18,25 +18,22 @@ Flow:
     result into the active window.
 """
 
-import os
-import sys
-import time
-import tempfile
+import io
+import logging
 import threading
 from dataclasses import dataclass
-from typing import Optional
 
+import keyboard
 import numpy as np
 import numpy.typing as npt
-import sounddevice as sd
-import scipy.io.wavfile as wav
-import pyperclip
-import keyboard
 import pyautogui
+import pyperclip
+import scipy.io.wavfile as wav
+import sounddevice as sd
+from dotenv import load_dotenv
 from openai import OpenAI
 
-from dotenv import load_dotenv
-load_dotenv()
+logger = logging.getLogger(__name__)
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
@@ -56,13 +53,8 @@ class Config:
     samplerate: int = 16000
     model:      str = "whisper-1"
 
-config = Config()
 
 # ──────────────────────────────────────────────────────────────────────────────
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    sys.exit("OPENAI_API_KEY missing. Create a .env file with OPENAI_API_KEY=sk-...")
 
 
 class AudioRecorder:
@@ -81,7 +73,7 @@ class AudioRecorder:
         self.config     = config
         self.recording: bool = False
         self.audio_data: list[npt.NDArray[np.int16]] = []
-        self.stream:    Optional[sd.InputStream] = None
+        self.stream:    sd.InputStream | None = None
         self.lock       = threading.Lock()
 
     def _audio_callback(
@@ -114,20 +106,20 @@ class AudioRecorder:
         self.stream     = sd.InputStream(samplerate=self.config.samplerate, channels=1,
                                          dtype="int16", callback=self._audio_callback)
         self.stream.start()
-        print("Recording... (press the shortcut again to stop)")
+        logger.info("Recording... (press the shortcut again to stop)")
 
     def stop(self) -> npt.NDArray[np.int16]:
         """Stop recording, close the stream, and return all captured audio.
 
-        Sleeps 100 ms after clearing the recording flag to allow any in-flight
-        callback invocation to complete before the stream is closed.
+        Sets the recording flag under the lock, then calls stream.stop() which
+        blocks until all in-flight callbacks have completed.
 
         Returns:
             Concatenated audio as a 1-D int16 NumPy array, or an empty array
             (size == 0) if no audio was captured.
         """
-        self.recording = False
-        time.sleep(0.1)
+        with self.lock:
+            self.recording = False
         if self.stream:
             self.stream.stop()
             self.stream.close()
@@ -140,8 +132,8 @@ class AudioRecorder:
 class Transcriber:
     """Converts raw audio to text using the OpenAI Whisper API.
 
-    Handles the temporary WAV file lifecycle: write, upload, delete.
-    Exceptions from the API are propagated to the caller.
+    Writes the audio to an in-memory WAV buffer and sends it directly to the
+    API, avoiding temporary files on disk.
     """
 
     def __init__(self, client: OpenAI, config: Config) -> None:
@@ -155,10 +147,7 @@ class Transcriber:
         self.config = config
 
     def transcribe(self, audio: npt.NDArray[np.int16]) -> str:
-        """Write audio to a temporary WAV file and send it to the Whisper API.
-
-        The temporary file is always deleted in a finally block, even if the
-        API call raises. Whitespace is stripped from the returned transcript.
+        """Write audio to an in-memory WAV buffer and send it to the Whisper API.
 
         Args:
             audio: Raw PCM samples as a 1-D int16 NumPy array.
@@ -167,27 +156,22 @@ class Transcriber:
             The transcribed text with leading/trailing whitespace removed.
 
         Raises:
-            Exception: Any error raised by the OpenAI API or file I/O.
+            Exception: Any error raised by the OpenAI API.
         """
-        tmp_path: Optional[str] = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                tmp_path = f.name
-            wav.write(tmp_path, self.config.samplerate, audio)
+        buf = io.BytesIO()
+        buf.name = "audio.wav"
+        wav.write(buf, self.config.samplerate, audio)
+        buf.seek(0)
 
-            print("Transcribing...")
-            with open(tmp_path, "rb") as audio_file:
-                result = self.client.audio.transcriptions.create(
-                    model=self.config.model,
-                    file=audio_file,
-                    language=self.config.language,
-                )
-            text: str = result.text.strip()
-            print(f"Transcribed: {text}")
-            return text
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+        logger.info("Transcribing...")
+        result = self.client.audio.transcriptions.create(
+            model=self.config.model,
+            file=buf,
+            language=self.config.language,
+        )
+        text: str = result.text.strip()
+        logger.info("Transcribed: %s", text)
+        return text
 
 
 class TextOutput:
@@ -234,19 +218,19 @@ class HotkeyController:
     def _run_transcription_pipeline(self) -> None:
         """Stop recording, transcribe, and paste; run as a daemon thread target.
 
-        Prints a warning if no audio was captured. Any exception raised by
-        Transcriber or TextOutput is caught and printed so the thread exits
+        Logs a warning if no audio was captured. Any exception raised by
+        Transcriber or TextOutput is caught and logged so the thread exits
         cleanly without crashing the application.
         """
         try:
             audio = self.audio_recorder.stop()
             if audio.size == 0:
-                print("No audio captured.")
+                logger.warning("No audio captured.")
                 return
             text = self.transcriber.transcribe(audio)
             self.text_output.paste(text)
-        except Exception as e:
-            print(f"Error: {e}")
+        except Exception:
+            logger.exception("Transcription pipeline failed")
 
     def toggle(self, _event: object = None) -> None:
         """Start or stop recording depending on the current state.
@@ -276,18 +260,37 @@ class HotkeyController:
 
 def main() -> None:
     """Entry point: compose the pipeline and block until Ctrl+C is pressed."""
-    print("Whisper Voice Input active")
-    print(f"   Shortcut : {config.hotkey.upper()}")
-    print(f"   Language : {config.language}")
-    print("   Press Ctrl+C to quit\n")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
-    client         = OpenAI(api_key=OPENAI_API_KEY)
+    load_dotenv()
+
+    config = Config()
+
+    logger.info("Whisper Voice Input active")
+    logger.info("   Shortcut : %s", config.hotkey.upper())
+    logger.info("   Language : %s", config.language)
+    logger.info("   Press Ctrl+C to quit")
+
+    client         = OpenAI()
     audio_recorder = AudioRecorder(config=config)
     transcriber    = Transcriber(client=client, config=config)
     text_output    = TextOutput()
     controller     = HotkeyController(audio_recorder, transcriber, text_output)
     controller.register(config)
-    keyboard.wait("ctrl+c")
+
+    try:
+        keyboard.wait("ctrl+c")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if audio_recorder.recording:
+            audio_recorder.stop()
+        keyboard.unhook_all()
+        logger.info("Shut down.")
 
 
 if __name__ == "__main__":

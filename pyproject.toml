@@ -1,7 +1,7 @@
 [project]
 name = "whisper-voice"
 version = "0.1.0"
-description = "Add your description here"
+description = "Global hotkey-triggered voice input using OpenAI Whisper"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -17,4 +17,25 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "numpy>=2.0",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+addopts = "--tb=short"

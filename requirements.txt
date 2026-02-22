@@ -1,7 +1,0 @@
-openai
-sounddevice
-scipy
-pyperclip
-keyboard
-pyautogui
-python-dotenv

@@ -13,5 +13,11 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get install -y libportaudio2 xvfb python3-tk
 
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy whisper_voice.py
+
       - name: Run tests
-        run: xvfb-run uv run pytest
+        run: xvfb-run uv run pytest --cov=whisper_voice --cov-report=term-missing
