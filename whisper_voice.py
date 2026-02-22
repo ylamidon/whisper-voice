@@ -16,8 +16,10 @@ import sys
 import time
 import tempfile
 import threading
+from typing import Optional
 
 import numpy as np
+import numpy.typing as npt
 import sounddevice as sd
 import scipy.io.wavfile as wav
 import pyperclip
@@ -30,10 +32,10 @@ load_dotenv()
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-HOTKEY     = "ctrl+alt+space"
-LANGUAGE   = "fr"          # français — change en "en" si besoin
-SAMPLERATE = 16000
-MODEL      = "whisper-1"
+HOTKEY:     str = "ctrl+alt+space"
+LANGUAGE:   str = "fr"          # français — change en "en" si besoin
+SAMPLERATE: int = 16000
+MODEL:      str = "whisper-1"
 
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -41,20 +43,25 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     sys.exit("OPENAI_API_KEY manquante. Crée un fichier .env avec OPENAI_API_KEY=sk-...")
 
-client    = OpenAI(api_key=OPENAI_API_KEY)
-recording = False
-audio_data = []
-stream     = None
-lock       = threading.Lock()
+client:     OpenAI = OpenAI(api_key=OPENAI_API_KEY)
+recording:  bool = False
+audio_data: list[npt.NDArray[np.int16]] = []
+stream:     Optional[sd.InputStream] = None
+lock:       threading.Lock = threading.Lock()
 
 
-def audio_callback(indata, frames, time_info, status):
+def audio_callback(
+    indata: npt.NDArray[np.int16],
+    frames: int,
+    time_info: object,
+    status: sd.CallbackFlags,
+) -> None:
     with lock:
         if recording:
             audio_data.append(indata.copy())
 
 
-def start_recording():
+def start_recording() -> None:
     global recording, audio_data, stream
     audio_data = []
     recording  = True
@@ -64,7 +71,7 @@ def start_recording():
     print("Enregistrement... (appuie à nouveau sur le raccourci pour arrêter)")
 
 
-def stop_and_transcribe():
+def stop_and_transcribe() -> None:
     global recording, stream
 
     recording = False
@@ -78,9 +85,9 @@ def stop_and_transcribe():
         print("Aucun audio capturé.")
         return
 
-    audio_np = np.concatenate(audio_data, axis=0)
+    audio_np: npt.NDArray[np.int16] = np.concatenate(audio_data, axis=0)
 
-    tmp_path = None
+    tmp_path: Optional[str] = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = f.name
@@ -93,7 +100,7 @@ def stop_and_transcribe():
                 file=audio_file,
                 language=LANGUAGE,
             )
-        text = result.text.strip()
+        text: str = result.text.strip()
         print(f"Transcrit : {text}")
 
         # Colle dans la fenêtre active
@@ -107,7 +114,7 @@ def stop_and_transcribe():
             os.unlink(tmp_path)
 
 
-def toggle(event=None):
+def toggle(event: object = None) -> None:
     with lock:
         is_recording = recording
     if not is_recording:
@@ -116,7 +123,7 @@ def toggle(event=None):
         threading.Thread(target=stop_and_transcribe, daemon=True).start()
 
 
-def main():
+def main() -> None:
     print("Whisper Voice Input actif")
     print(f"   Raccourci : {HOTKEY.upper()}")
     print(f"   Langue    : {LANGUAGE}")
