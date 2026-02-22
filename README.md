@@ -4,6 +4,10 @@
 
 Global hotkey voice-to-text for Windows using OpenAI Whisper. Press `Ctrl+Alt+Space` to start recording, press again to stop — the transcription is pasted directly into the active window.
 
+## Demo
+
+<!-- TODO: add a demo GIF here (ScreenToGif or ShareX) -->
+
 ## Requirements
 
 - Windows
