@@ -39,7 +39,7 @@ MODEL      = "whisper-1"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
-    sys.exit("❌ OPENAI_API_KEY manquante. Crée un fichier .env avec OPENAI_API_KEY=sk-...")
+    sys.exit("OPENAI_API_KEY manquante. Crée un fichier .env avec OPENAI_API_KEY=sk-...")
 
 client    = OpenAI(api_key=OPENAI_API_KEY)
 recording = False
@@ -61,7 +61,7 @@ def start_recording():
     stream     = sd.InputStream(samplerate=SAMPLERATE, channels=1,
                                  dtype="int16", callback=audio_callback)
     stream.start()
-    print("🎙️  Enregistrement... (appuie à nouveau sur le raccourci pour arrêter)")
+    print("Enregistrement... (appuie à nouveau sur le raccourci pour arrêter)")
 
 
 def stop_and_transcribe():
@@ -75,7 +75,7 @@ def stop_and_transcribe():
         stream = None
 
     if not audio_data:
-        print("⚠️  Aucun audio capturé.")
+        print("Aucun audio capturé.")
         return
 
     audio_np = np.concatenate(audio_data, axis=0)
@@ -86,7 +86,7 @@ def stop_and_transcribe():
             tmp_path = f.name
         wav.write(tmp_path, SAMPLERATE, audio_np)
 
-        print("⏳ Transcription en cours...")
+        print("Transcription en cours...")
         with open(tmp_path, "rb") as audio_file:
             result = client.audio.transcriptions.create(
                 model=MODEL,
@@ -94,14 +94,14 @@ def stop_and_transcribe():
                 language=LANGUAGE,
             )
         text = result.text.strip()
-        print(f"✅ Transcrit : {text}")
+        print(f"Transcrit : {text}")
 
         # Colle dans la fenêtre active
         pyperclip.copy(text)
         pyautogui.hotkey("ctrl", "v")
 
     except Exception as e:
-        print(f"❌ Erreur : {e}")
+        print(f"Erreur : {e}")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
@@ -117,7 +117,7 @@ def toggle(event=None):
 
 
 def main():
-    print(f"✅ Whisper Voice Input actif")
+    print("Whisper Voice Input actif")
     print(f"   Raccourci : {HOTKEY.upper()}")
     print(f"   Langue    : {LANGUAGE}")
     print(f"   Appuie sur Ctrl+C pour quitter\n")
