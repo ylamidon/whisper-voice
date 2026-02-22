@@ -75,7 +75,7 @@ class TestStopAndTranscribe:
     def test_warns_when_no_audio(self, capsys):
         whisper_voice.audio_data = []
         whisper_voice.stop_and_transcribe()
-        assert "Aucun audio" in capsys.readouterr().out
+        assert "No audio captured." in capsys.readouterr().out
 
     def test_transcribes_and_pastes(self, capsys):
         chunk = np.zeros((1024, 1), dtype="int16")
@@ -100,4 +100,4 @@ class TestStopAndTranscribe:
         with patch("pyperclip.copy"), patch("pyautogui.hotkey"):
             whisper_voice.stop_and_transcribe()
 
-        assert "Erreur" in capsys.readouterr().out
+        assert "Error:" in capsys.readouterr().out
