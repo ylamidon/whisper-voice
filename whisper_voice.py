@@ -5,18 +5,19 @@ Raccourci : Ctrl+Alt+Espace  →  démarre l'enregistrement
             Ctrl+Alt+Espace  →  arrête, transcrit, et colle le texte
 
 Installation :
-    pip install openai sounddevice scipy pyperclip keyboard pyautogui
+    uv sync
 
 Configuration :
-    Mettre ta clé API dans la variable OPENAI_API_KEY ci-dessous
-    ou dans la variable d'environnement OPENAI_API_KEY
+    Mettre ta clé API dans un fichier .env : OPENAI_API_KEY=sk-...
 """
 
 import os
+import sys
 import time
 import tempfile
 import threading
 
+import numpy as np
 import sounddevice as sd
 import scipy.io.wavfile as wav
 import pyperclip
@@ -29,13 +30,16 @@ load_dotenv()
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-...")   # ta clé ici
-HOTKEY         = "ctrl+alt+space"
-LANGUAGE       = "fr"          # français — change en "en" si besoin
-SAMPLERATE     = 16000
-MODEL          = "whisper-1"
+HOTKEY     = "ctrl+alt+space"
+LANGUAGE   = "fr"          # français — change en "en" si besoin
+SAMPLERATE = 16000
+MODEL      = "whisper-1"
 
 # ──────────────────────────────────────────────────────────────────────────────
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    sys.exit("❌ OPENAI_API_KEY manquante. Crée un fichier .env avec OPENAI_API_KEY=sk-...")
 
 client    = OpenAI(api_key=OPENAI_API_KEY)
 recording = False
@@ -74,15 +78,15 @@ def stop_and_transcribe():
         print("⚠️  Aucun audio capturé.")
         return
 
-    import numpy as np
     audio_np = np.concatenate(audio_data, axis=0)
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-        tmp_path = f.name
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            tmp_path = f.name
         wav.write(tmp_path, SAMPLERATE, audio_np)
 
-    print("⏳ Transcription en cours...")
-    try:
+        print("⏳ Transcription en cours...")
         with open(tmp_path, "rb") as audio_file:
             result = client.audio.transcriptions.create(
                 model=MODEL,
@@ -99,11 +103,14 @@ def stop_and_transcribe():
     except Exception as e:
         print(f"❌ Erreur : {e}")
     finally:
-        os.unlink(tmp_path)
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 
 def toggle(event=None):
-    if not recording:
+    with lock:
+        is_recording = recording
+    if not is_recording:
         start_recording()
     else:
         threading.Thread(target=stop_and_transcribe, daemon=True).start()
