@@ -16,6 +16,7 @@ import sys
 import time
 import tempfile
 import threading
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -32,10 +33,14 @@ load_dotenv()
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
-HOTKEY:     str = "ctrl+alt+space"
-LANGUAGE:   str = "fr"          # French — change to "en" if needed
-SAMPLERATE: int = 16000
-MODEL:      str = "whisper-1"
+@dataclass(frozen=True)
+class Config:
+    hotkey:     str = "ctrl+alt+space"
+    language:   str = "fr"          # French — change to "en" if needed
+    samplerate: int = 16000
+    model:      str = "whisper-1"
+
+config = Config()
 
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -65,7 +70,7 @@ def start_recording() -> None:
     global recording, audio_data, stream
     audio_data = []
     recording  = True
-    stream     = sd.InputStream(samplerate=SAMPLERATE, channels=1,
+    stream     = sd.InputStream(samplerate=config.samplerate, channels=1,
                                  dtype="int16", callback=audio_callback)
     stream.start()
     print("Recording... (press the shortcut again to stop)")
@@ -91,14 +96,14 @@ def stop_and_transcribe() -> None:
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             tmp_path = f.name
-        wav.write(tmp_path, SAMPLERATE, audio_np)
+        wav.write(tmp_path, config.samplerate, audio_np)
 
         print("Transcribing...")
         with open(tmp_path, "rb") as audio_file:
             result = client.audio.transcriptions.create(
-                model=MODEL,
+                model=config.model,
                 file=audio_file,
-                language=LANGUAGE,
+                language=config.language,
             )
         text: str = result.text.strip()
         print(f"Transcribed: {text}")
@@ -125,11 +130,11 @@ def toggle(event: object = None) -> None:
 
 def main() -> None:
     print("Whisper Voice Input active")
-    print(f"   Shortcut : {HOTKEY.upper()}")
-    print(f"   Language : {LANGUAGE}")
+    print(f"   Shortcut : {config.hotkey.upper()}")
+    print(f"   Language : {config.language}")
     print("   Press Ctrl+C to quit\n")
 
-    keyboard.add_hotkey(HOTKEY, toggle)
+    keyboard.add_hotkey(config.hotkey, toggle)
     keyboard.wait("ctrl+c")
 
 
