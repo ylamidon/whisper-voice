@@ -25,6 +25,11 @@ uv run python whisper_voice.py
 
 Stop with `Ctrl+C` in the terminal.
 
+Run tests:
+```
+uv run pytest
+```
+
 ## Key Configuration
 
 At the top of [whisper_voice.py](whisper_voice.py):

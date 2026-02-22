@@ -31,6 +31,18 @@ uv run python whisper_voice.py
 - `Ctrl+Alt+Space` — stop, transcribe, and paste
 - `Ctrl+C` — quit
 
+## Development
+
+Install dev dependencies:
+```
+uv sync --group dev
+```
+
+Run tests:
+```
+uv run pytest
+```
+
 ## Configuration
 
 Edit the constants at the top of `whisper_voice.py`:
