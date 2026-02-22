@@ -10,7 +10,7 @@ A single-file Python script that binds a global hotkey (`Ctrl+Alt+Space`) to tog
 
 Install dependencies:
 ```
-pip install openai sounddevice scipy pyperclip keyboard pyautogui python-dotenv numpy
+uv sync
 ```
 
 Configure API key via `.env` file:
@@ -20,7 +20,7 @@ OPENAI_API_KEY=sk-...
 
 Run the script (requires admin/elevated privileges on Windows for global hotkey capture):
 ```
-python whisper_voice.py
+uv run python whisper_voice.py
 ```
 
 Stop with `Ctrl+C` in the terminal.
