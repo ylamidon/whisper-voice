@@ -1,0 +1,15 @@
+[project]
+name = "whisper-voice"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "keyboard>=0.13.5",
+    "openai>=2.21.0",
+    "pyautogui>=0.9.54",
+    "pyperclip>=1.11.0",
+    "python-dotenv>=1.2.1",
+    "scipy>=1.17.0",
+    "sounddevice>=0.5.5",
+]
