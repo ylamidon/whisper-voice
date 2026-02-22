@@ -1,5 +1,7 @@
 # whisper-voice
 
+[![Tests](https://github.com/ylamidon/whisper-voice/actions/workflows/tests.yml/badge.svg)](https://github.com/ylamidon/whisper-voice/actions/workflows/tests.yml)
+
 Global hotkey voice-to-text for Windows using OpenAI Whisper. Press `Ctrl+Alt+Space` to start recording, press again to stop — the transcription is pasted directly into the active window.
 
 ## Requirements
